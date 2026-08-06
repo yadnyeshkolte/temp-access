@@ -1,7 +1,8 @@
+```bash
 sudo modprobe -r kvm_intel
 sudo modprobe -r kvm_amd
 sudo modprobe -r kvm
-
+```
 
 ### Phase 1: Database Management (pgAdmin 4 Setup)
 
