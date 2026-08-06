@@ -1,3 +1,8 @@
+sudo modprobe -r kvm_intel
+sudo modprobe -r kvm_amd
+sudo modprobe -r kvm
+
+
 ### Phase 1: Database Management (pgAdmin 4 Setup)
 
 This phase configures the official repository for Debian 11 (Bullseye) to ensure the correct dependencies are fetched, and installs the pgAdmin 4 desktop client.
