@@ -1,159 +1,231 @@
-# 🚀 SSM -> HPC Standards & Specification
-> **The Vision:** A comprehensive blueprint setting out the ecosystem, middleware, and toolchain an Indian High-Performance Computing (HPC) operating system must standardise, layer by layer. 
-> *Let's dive in, understand the standards, and build the future of indigenous computing!*
+# Switching storopt to Hugging Face — follow these steps
+
+storopt now talks to **Hugging Face** instead of Gemini. The same code path
+also drives any endpoint you host yourself, because they all speak the
+OpenAI-compatible chat protocol — swapping between them is one URL, not a
+rewrite.
+
+Two ways to run, both already supported:
+
+| Mode | `base_url` | Token | Use it when |
+|---|---|---|---|
+| **Hosted router** (start here) | `https://router.huggingface.co/v1` | your `hf_…` token | you want it working in 5 minutes |
+| **Self-hosted** | your own URL ending in `/v1` | whatever your server wants, often none | HF Inference Endpoint, TGI, vLLM, llama.cpp, Ollama, LM Studio |
+
+Everything below takes ~10 minutes. Steps 1–4 are the whole job.
 
 ---
 
-## 🎯 The Brief: What We Are Setting Out to Do
+## Step 1 — Get a Hugging Face token
 
-### What It Covers 
-* **Three Focus Areas:** The software ecosystem, the middleware, and the toolchain.
-* **One Machine Class:** High-Performance Computing (HPC).
-* **Testable Standards:** Written as strict standards outlining what an implementer *must*, *should*, and *may* do, rather than a loose description.
-* **Architectural Organization:** Organized by the four layers of an operating system (because standards are written per layer, not per product).
-* **International Baselining:** Every requirement is checked against current global baselines, ensuring our standards are world-class.
-
-### What It Leaves to Others
-* **Out of Scope for this specific standard:** Kernel, security, artificial intelligence, hardware and firmware, networking and storage, and post-quantum cryptography.
-* *Note:* These belong to other technical groups. However, we explicitly name what we assume from them and provide a clean handover list to prevent integration blind spots.
+1. Sign in at <https://huggingface.co>.
+2. Go to **Settings → Access Tokens** (<https://huggingface.co/settings/tokens>).
+3. **Create new token** → token type **Read**… but tick the permission
+   **"Make calls to Inference Providers"**. A plain Read token without that
+   box will come back `403`.
+4. Copy it. It looks like `hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`. You only see it
+   once.
 
 ---
 
-## 🗺️ Where We Start From
-*What our own two documents already settle.*
+## Step 2 — Put the token in the app
 
-| Source | What it already decides | What it leaves open |
-| :--- | :--- | :--- |
-| **Feasibility Study — ecosystem chapter** | Package management, national repositories/mirrors, and software signing apply to HPC. Repositories/signing are marked for indigenous development. | No repository design and no package format are named. |
-| **Feasibility Study — middleware and toolchain chapter** | 15 components with a machine-class matrix; 12 apply to HPC. Distributed computing middleware is the one line that is HPC-only. | No version, no obligation level, and no test is attached to any of them. |
-| **Feasibility Study — HPC chapter** | A complete requirement table for HPC across all 8 technology areas, plus deployment settings, gaps, and indigenous opportunities. | Written as descriptive prose, not as testable obligations. |
-| **Feasibility Study — build strategy** | Three tiers: reuse commodity software, extend platform software, build strategic software ourselves. | Which tier each HPC component belongs to. |
-| **Specification Template** | The four-layer architecture, and the empty chapters we have been asked to fill. | Its ecosystem and middleware chapters contain no HPC content at all today. |
+You asked for the key hardcoded for now, so there is a slot waiting for it.
 
-### ⚠️ Decision Needed Before Drafting
-**The two documents do not agree on what HPC is:**
-1. The *Specification Template* treats HPC as a tuned configuration of the Server OS.
-2. The *Feasibility Study* treats HPC as an OS in its own right alongside Desktop, Server, Mobile, and Embedded. It then divides it again into cluster, supercomputing, grid, cloud, and strategic/secure HPC.
+Open `python/storopt_ai/config.py` and paste it into the constant near the top:
 
-> **Why this matters:** This decides whether our output is a subsection, a new chapter, or a family of chapters. It dictates how requirements are numbered and traced—the one thing that cannot be corrected cheaply later.
+```python
+BUILTIN_API_KEY = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
 
----
+That is the only edit you need. Every user of your build now gets working AI
+advice with no setup.
 
-## 🥞 The Layer View
-An operating system is built in four horizontal layers. Our three areas cut across all four layers, and differently in each. 
+> **Read this once, then move on.** A token in the source is readable by
+> anyone who installs the package — `python/storopt_ai/` installs to
+> `/usr/share/storopt/` as plain `.py` files. Treat it as public. Use a token
+> that only has Inference Providers access, and rotate it if it gets abused.
+> `docs/secrets-and-api-keys.md` covers the real fix when you get to it.
 
-| Layer | What it does, in plain terms | What our three areas must specify here |
-| :--- | :--- | :--- |
-| **1. Hardware enablement** | Makes processors, accelerators, and network cards usable. | Which processor families and accelerator programming models the compiler must produce working code for. (Drivers belong to the hardware group). |
-| **2. Kernel and core services** | Decides which job gets which processor, memory, and device—and keeps jobs apart. | Nothing of ours is written here. But we must publish the list of kernel features we assume and formally hand it to the kernel group. |
-| **3. Platform and middleware** | The layer researchers actually work on: compilers, parallel runtimes, containers, schedulers, storage clients. | The bulk of the work, and the layer where an HPC operating system genuinely differs from an ordinary server. |
-| **4. Ecosystem** | How software is packaged, signed, delivered, certified, and supported. | The national repository and mirror network, package format, developer kit, and scientific application certification. |
+The other two ways still work and take priority over the constant, which is
+what you want for your own dev machine:
 
----
+```bash
+export HF_TOKEN=hf_xxxxxxxxxxxx        # 1. environment — wins over everything
+storopt-ai --set-key                   # 2. ~/.config/storopt/config.json (0600)
+```
 
-## 🛠️ Layer 1: Hardware Enablement
-*What the compiler must be able to target.*
-
-* **MUST:** Name a specific capability level for each processor family.
-  * *Intel/AMD:* A defined instruction-set level (not just "64-bit x86").
-  * *ARM:* Vector extensions named.
-  * *RISC-V:* The **RVA23 profile** (ratified Oct 2024, making vector and virtualization support compulsory). This is critical for defending an HPC claim against "RISC-V support" vagueness.
-* **MUST:** Name one portable way to program accelerators. **OpenMP** is the only candidate that is a published standard rather than a vendor product (vendor stacks like CUDA, ROCm, oneAPI should be supported but not be the *only* route).
-* **MUST:** Cross-building for RISC-V is specified until India has native RISC-V build capacity.
+Precedence: **environment → config file → `BUILTIN_API_KEY`**.
 
 ---
 
-## 🧠 Layer 2: Kernel and Core Services
-*What we depend on but do not own. If the kernel fails to provide these, our specifications break.*
+## Step 3 — Pick a model and confirm it answers
 
-| What we assume the kernel provides | What breaks in our chapters without it |
-| :--- | :--- |
-| Awareness of memory-to-processor mapping & ability to pin work | Placement of parallel jobs, and every performance figure we publish. |
-| Large memory page support, controllable per job | Performance of memory-heavy scientific codes. |
-| Modern resource-control groups (delegable to a scheduler) | Job resource limits, and running containers without admin rights. |
-| Controls keeping background system activity off compute processors | Efficiency at large node counts. |
-| Direct application access to high-speed network hardware | The whole of distributed computing middleware. |
-| Kernel-level performance measurement and tracing | The profiling and debugging tools we are asked to provide. |
+The default is `Qwen/Qwen2.5-7B-Instruct`. Check what your token can reach and
+verify the whole path end to end:
 
----
+```bash
+storopt-ai --show-key      # provider, endpoint, model, masked token
+storopt-ai --list-models   # every model id this endpoint accepts
+storopt-ai --check         # actually calls the model and prints its reply
+```
 
-## ⚙️ Layer 3: Platform and Middleware
-*Where an HPC system stops resembling a standard server.*
+`--check` is the one that matters. A green `result: reachable…` means the
+token, the URL and the model id are all correct.
 
-### The HPC Runtime
-* **MUST:** Conform to **MPI version 5.0** (approved June 2025). This establishes a common binary interface—compile once, run anywhere. This is the cheapest and most effective sovereignty available.
-* **MUST:** Adopt **PMIx** (the published interface between the job scheduler and parallel runtime). This provides a measurable definition for "Slurm-compatible".
-* **MUST:** Name a standard network abstraction layer so Indian interconnects can be added as plug-ins.
-* **MUST:** Use open container standards to package applications so they can run without admin privileges.
+To use a different model:
 
-### Toolchain (Build & Provenance)
-* **MUST:** Support major compiler families with fixed minimum versions and named language standards, explicitly including **Fortran**.
-* **MUST:** Specify math libraries by published interface, not by product name.
-* **MUST:** Provide a build system holding many versions of the same library side by side (e.g., **Spack 1.0**, July 2025).
-* **MUST:** Require every delivered artefact to carry a **Software Bill of Materials (SBOM)** and a signed record binding it to the source.
+```bash
+storopt-ai --set-model "meta-llama/Llama-3.1-8B-Instruct"
+# or, just for one run:
+storopt-ai --model "Qwen/Qwen2.5-72B-Instruct" --check
+```
 
----
+Model ids are Hub repo ids. You can also pin the serving provider by
+appending it — `deepseek-ai/DeepSeek-V3-0324:novita`.
 
-## 🌐 Layer 4: Ecosystem
-*Delivery, Trust, and Support.*
-
-* **MUST:** Establish a national repository and mirror network, including disconnected/offline routes for defense clusters.
-* **MUST:** Define certification in testable terms (builds from a published recipe, passes tests, ships an SBOM, declares parallel runtime versions).
-* **SHOULD:** Curate a national scientific software collection (like Europe's EESSI project which distributes 600+ projects).
-* **MUST:** Guarantee (in years) that compiled applications will keep working across supported releases.
+**Which model:** this task is "read a few KB of JSON, follow safety rules,
+emit JSON". That needs instruction-following, not world knowledge. 7–8B is the
+usable floor; 30B+ is noticeably better at the risk-tiering rules ("photos are
+never `low` risk"). Try `Qwen/Qwen2.5-7B-Instruct` first, and if the advice
+feels dumb, move up before you blame the prompt.
 
 ---
 
-## 📊 Benchmark: Where the World Actually Is (2026)
+## Step 4 — Run it
 
-| Capability | Where the world is (2026) | What our standard must state |
-| :--- | :--- | :--- |
-| **Parallel communication** | MPI 5.0 (June 2025) - first common binary interface. | MUST conform (anti-lock-in clause). |
-| **Multi-core programming** | OpenMP 6.0 (Nov 2024). | MUST conform (portable accelerator route). |
-| **Scheduler interface** | PMIx standard v5.0 (May 2023). | MUST conform (defines "Slurm-compatible"). |
-| **Reference cluster OS** | OpenHPC 4.x targets Enterprise Linux 10. | SHOULD align to a named public baseline. |
-| **Scientific software stack** | Spack 1.0 (July 2025). | MUST specify a scientific stack manager. |
-| **National stack delivery** | EESSI - 600+ projects (production March 2026). | SHOULD be the working model for our stack. |
-| **Software supply chain** | SPDX 3.0.1 (ISO) / CycloneDX 1.6. | MUST name one as authoritative. |
-| **RISC-V for HPC** | RVA23 profile (Oct 2024). | MUST target the ratified profile, not just "RISC-V". |
+```bash
+# terminal
+storopt scan ~/Downloads --json | storopt-ai
+storopt advise ~/Downloads
 
-> **The Strategic Read:** Every sovereign OS program keeps the Linux base and spends its budget on the ecosystem, supply chain, and hardware enablement. Require conformance to open standards first, and only fund the gaps.
+# GUI — nothing to configure, it shells out to the same helper
+storopt-gui
+```
 
----
-
-## 🏗️ Reuse Versus Build
-*Where our indigenous effort and focus actually belong.*
-
-| Component | Position |
-| :--- | :--- |
-| Parallel runtime, compilers, mathematical libraries, parallel filesystem | **REUSE** |
-| Container runtime, package management, build & release pipeline, monitoring | **EXTEND** |
-| Drivers and plug-ins for Indian high-speed interconnects | **BUILD** |
-| Allocation/priority policy for Indian HPC on a standards-compatible scheduler | **BUILD** |
-| National repository, mirror network, and code-signing infrastructure | **BUILD** |
-| Provenance and attestation across the scientific software stack | **BUILD** |
-| Hardened library variants for classified and defense deployment | **BUILD** |
+If the model is unreachable for any reason, you get the built-in rule-based
+advice instead of an error. That fallback is unchanged and always available
+with `--offline`.
 
 ---
 
-## 📋 What Makes This a Standard?
-* Every requirement is marked **mandatory, recommended, or optional**.
-* Every requirement carries an identifier and a **traceable link to a verification test**.
-* Every performance figure names the **hardware measured on and the method used** (no invented placeholders).
-* Every external standard cited carries its **exact version and date**.
+## Step 5 — Rebuild and install (only if you edited the C side)
+
+The Python bridge is copied in, not compiled, so a token change needs no
+build. Rebuild only when you touched `src/`:
+
+```bash
+./scripts/build.sh          # or: cmake --build build -j$(nproc)
+./scripts/make-deb.sh       # package
+```
+
+Sanity check before packaging:
+
+```bash
+./build/test_core                      # 39 checks, 0 failures
+PYTHONPATH=python python3 -m storopt_ai --check
+```
 
 ---
 
-## 🚦 For Direction: Decisions Blocking the Start
+## Moving to a self-hosted model later
 
-| Question | What it blocks |
-| :--- | :--- |
-| Is HPC a Server config, a distinct OS, or a family of five? | Document structure, compliance matrix, and requirement numbering. |
-| Does "Slurm-compatible" mean conforming to the interface, forking, or upstreaming? | Scheduler effort/cost and whether it counts as strategic work. |
-| Is the sovereign package format new, and does it cover the scientific stack? | The whole ecosystem chapter (an order of magnitude in effort difference). |
-| Which bill-of-materials format is authoritative (SPDX or CycloneDX)? | Toolchain output and compliance tests built on it. |
-| Which facility do we measure performance on, and when can it be booked? | Every performance requirement in the HPC chapter. |
-| Which Indian interconnect are we writing plug-in support for? | The one strategic item that is genuinely HPC-only and ours. |
+Nothing in the code changes. Point it at your own endpoint:
+
+```bash
+# HF Inference Endpoint (you host, HF runs the GPU)
+storopt-ai --set-base-url "https://<id>.<region>.aws.endpoints.huggingface.cloud/v1"
+storopt-ai --set-model "tgi"           # TGI answers to whatever it was deployed as
+
+# Ollama on your own machine — no token needed
+storopt-ai --set-base-url "http://127.0.0.1:11434/v1"
+storopt-ai --set-model "qwen2.5:7b-instruct"
+
+# vLLM / llama.cpp / LM Studio — same shape
+storopt-ai --set-base-url "http://your-server:8000/v1"
+```
+
+Then `storopt-ai --check` again. When the base URL is *not* the hosted router,
+a missing token is not treated as an error — self-hosted servers usually have
+no auth.
+
+Two things to get right:
+
+- The base URL **must end in `/v1`** and must not already include
+  `/chat/completions`. A `404` here is almost always this.
+- Ollama's default context window is small and truncation is silent — the
+  front of the prompt, where the safety rules live, is what gets dropped. Set
+  `num_ctx` to 8192 on the model before trusting its answers.
 
 ---
-*End of Document. Let's start building!* 🇮🇳💻
+
+## What actually changed in the code
+
+| File | Change |
+|---|---|
+| `python/storopt_ai/hf.py` | **New.** OpenAI-compatible client. Stdlib only, no `requests`, no `huggingface_hub` — the `.deb` still installs on stock Debian. |
+| `python/storopt_ai/config.py` | `BUILTIN_API_KEY`, provider / base_url / model settings, HF env vars. |
+| `python/storopt_ai/advisor.py` | `advise()` dispatches to HF or Gemini; **new `sanitise()`** validates model output. |
+| `python/storopt_ai/__main__.py` | `--provider`, `--base-url`, `--set-model`, `--set-base-url`, `--list-models`; `--check` prints endpoint and model. |
+| `python/storopt_ai/gemini.py` | Untouched. Still works via `--provider gemini`. |
+| `src/` | Three help strings that said "Gemini API key". No logic changed. |
+
+The output shape the GUI reads — `{summary, forecast_note, recommendations[],
+source}` — is identical. `src/gui/advice.c` and `window.c` never knew which
+model was behind it, and still don't.
+
+### Two behaviours worth knowing about
+
+**Structured output is negotiated, not assumed.** Gemini guaranteed the reply
+matched a schema. Open models don't, and different backends stop at different
+points, so `hf.py` tries three tiers and falls back automatically:
+`json_schema` (server constrains decoding) → `json_object` (valid JSON, any
+shape) → nothing (a hardened extractor pulls the object out of ```` ```json ````
+fences, preamble and trailing chatter). You do not have to configure this.
+
+**Model output is now validated before it is shown.** `advisor.sanitise()`
+runs on every answer:
+
+- `"remove"` → `delete`, `"low risk"` → `low`, `"12345"` → `12345`
+- any path the scan did not actually see is **dropped** — small models invent
+  paths despite being told not to
+- a suggested `command` is **refused** (not repaired) if it contains `sudo`,
+  `;`, `&&`, `|`, backticks, `$(`, redirects, or a path under
+  `/etc /usr /bin /sbin /lib /boot`
+- a `delete` aimed at system paths, or one whose paths were all invented, is
+  downgraded to `review` at `high` risk
+
+This matters because the GUI renders `command` with a copy-to-clipboard
+button. A hallucinated path inside an `rm -rf` that a user pastes into a shell
+is data loss with your name on it. The check costs nothing and closes a hole
+that existed with Gemini too.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `403` / rejected the token | Token lacks Inference Providers permission | Recreate it with that box ticked |
+| `401` | Token typo, or `BUILTIN_API_KEY` still empty | `storopt-ai --show-key` |
+| `404` model or route not found | Bad model id, or base URL missing/duplicating `/v1` | `storopt-ai --list-models` |
+| `402` out of credits | Free monthly inference credits exhausted | Wait for reset, upgrade, or self-host (Step 5) |
+| `503` model is loading | Cold start | Retry in a minute |
+| Advice is generic / ignores the safety rules | Model too small | Move to a larger model |
+| Recommendations appear with no paths | `sanitise()` dropped invented paths | Working as intended — the model made them up |
+| GUI spinner runs for a minute | Open models are slower than Gemini was | Expected; smaller model or a faster provider |
+
+Free tier is **free monthly credits, not unlimited** — a `402` is the quota,
+not a bug. One "get advice" click is one call, so it goes a long way, but it
+is finite. Self-hosting (Step 5) is the answer when it isn't.
+
+---
+
+## Reverting to Gemini
+
+Kept working on purpose:
+
+```bash
+export GEMINI_API_KEY=...
+storopt-ai --provider gemini --check
+```
